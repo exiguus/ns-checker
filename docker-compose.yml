@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ns-checker:
+    container_name: ns-checker
+    build: .
+    ports:
+      - "${DNS_PORT:-25353}:${DNS_PORT:-25353}/udp"
+      - "${DNS_PORT:-25353}:${DNS_PORT:-25353}/tcp"
+    environment:
+      - DNS_PORT=${DNS_PORT:-25353}
+      - CACHE_TTL=${CACHE_TTL:-600}
+      - MAX_WORKERS=${MAX_WORKERS:-12}
+      - RATE_LIMIT=${RATE_LIMIT:-100000}
+      - RATE_BURST=${RATE_BURST:-1000}
+      - IN_CONTAINER=true
+    volumes:
+      - ./dns_listener.log:/app/dns_listener.log
+    cap_add:
+      - NET_BIND_SERVICE
+      - NET_ADMIN
+    healthcheck:
+      timeout: 10s
+      retries: 3
+    # use host network to forward DNS client IP
+    network_mode: host
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2048M
