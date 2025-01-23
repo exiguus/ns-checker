@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -73,5 +74,8 @@ func runCommand(args []string) int {
 }
 
 func main() {
+	// Parse flags before running
+	flag.Parse()
+
 	os.Exit(runCommand(os.Args))
 }

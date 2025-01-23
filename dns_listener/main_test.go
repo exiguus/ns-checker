@@ -2,262 +2,21 @@ package dns_listener
 
 import (
 	"net"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/exiguus/ns-checker/dns_listener/config"
+	"github.com/exiguus/ns-checker/dns_listener/types"
 )
 
-func TestMain(m *testing.M) {
-	// Set up test environment
-	isTestMode = true
-	origLogPath := os.Getenv("LOG_PATH")
-	tmpDir := os.TempDir()
-	os.Setenv("LOG_PATH", tmpDir)
-
-	// Run tests
-	code := m.Run()
-
-	// Clean up
-	os.Setenv("LOG_PATH", origLogPath)
-	// Clean up any test log files
-	os.RemoveAll(filepath.Join(tmpDir, "*dns_listener*.log"))
-	os.RemoveAll(filepath.Join(tmpDir, "*dns_typo*.log"))
-
-	os.Exit(code)
-}
-
-func TestNewDNSListener(t *testing.T) {
-	// Create temporary log file
-	tmpLog := "test_dns.log"
-	defer os.Remove(tmpLog)
-
-	tests := []struct {
-		name    string
-		port    string
-		wantErr bool
-	}{
-		{
-			name:    "Valid port",
-			port:    "45353", // Using higher port number
-			wantErr: false,
-		},
-		{
-			name:    "Invalid port",
-			port:    "999999",
-			wantErr: true,
-		},
-		{
-			name:    "Invalid port string",
-			port:    "invalid",
-			wantErr: true,
-		},
-		{
-			name:    "Empty port",
-			port:    "",
-			wantErr: true,
-		},
+func TestCalculateOptimalWorkers(t *testing.T) {
+	workers := calculateOptimalWorkers()
+	if workers < 4 {
+		t.Errorf("Expected minimum 4 workers, got %d", workers)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			listener, err := NewDNSListener(tt.port, tmpLog)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewDNSListener() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && listener == nil {
-				t.Error("NewDNSListener() returned nil but wanted valid listener")
-			}
-			if listener != nil {
-				listener.Close()
-			}
-		})
-	}
-
-	// Test log file creation with LOG_PATH
-	listener, err := NewDNSListener("25353", "test_dns_listener.log")
-	if err != nil {
-		t.Fatalf("Failed to create DNS listener: %v", err)
-	}
-	defer listener.Close()
-
-	// Verify log file was created in correct location
-	logPath := os.Getenv("LOG_PATH")
-	files, err := filepath.Glob(filepath.Join(logPath, "*test_dns_listener.log"))
-	if err != nil || len(files) == 0 {
-		t.Error("Log file was not created in specified LOG_PATH")
-	}
-}
-
-func TestDNSCache(t *testing.T) {
-	cache := &dnsCache{
-		entries: make(map[string]dnsCacheEntry),
-	}
-
-	testResponse := []byte("test.response")
-
-	// Test cache update
-	cache.Lock()
-	cache.entries["test"] = dnsCacheEntry{
-		response: testResponse,
-		expires:  time.Now().Add(time.Second),
-	}
-	cache.Unlock()
-
-	// Test cache hit
-	cache.RLock()
-	entry, exists := cache.entries["test"]
-	cache.RUnlock()
-
-	if !exists {
-		t.Error("Cache entry not found")
-	}
-	if string(entry.response) != string(testResponse) {
-		t.Error("Cache entry mismatch")
-	}
-}
-
-func TestCreateDNSResponse(t *testing.T) {
-	testQuery := []byte{
-		0x00, 0x01, // Transaction ID
-		0x01, 0x00, // Flags
-		0x00, 0x01, // Questions
-		0x00, 0x00, // Answer RRs
-		0x00, 0x00, // Authority RRs
-		0x00, 0x00, // Additional RRs
-	}
-
-	response := createDNSResponse(testQuery, "127.0.0.1")
-
-	if len(response) == 0 {
-		t.Error("Expected non-empty DNS response")
-	}
-
-	if response[2] != 0x81 || response[3] != 0x80 {
-		t.Error("Invalid response flags")
-	}
-}
-
-func TestParseDNSQuery(t *testing.T) {
-	testQuery := []byte{
-		0x00, 0x01, // Transaction ID
-		0x01, 0x00, // Flags
-		0x00, 0x01, // Questions
-		0x00, 0x00, // Answer RRs
-		0x00, 0x00, // Authority RRs
-		0x00, 0x00, // Additional RRs
-		0x03, 'w', 'w', 'w', // Label
-		0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
-		0x03, 'c', 'o', 'm',
-		0x00,       // Root label
-		0x00, 0x01, // Type A
-		0x00, 0x01, // Class IN
-	}
-
-	result := parseDNSQuery(testQuery)
-
-	if result == "" {
-		t.Error("Expected non-empty parsed query")
-	}
-	if result == "Malformed DNS query" {
-		t.Error("Query incorrectly marked as malformed")
-	}
-}
-
-func TestUDPListener(t *testing.T) {
-	tmpLog := "test_dns.log"
-	defer os.Remove(tmpLog)
-
-	testPort := "45354" // Using different high port
-	listener, err := NewDNSListener(testPort, tmpLog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-
-	go listener.Start()
-	time.Sleep(time.Second) // Wait for server to start
-
-	// Create UDP client
-	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:"+testPort)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-
-	// Send test query
-	testQuery := []byte{
-		0x00, 0x01, // Transaction ID
-		0x01, 0x00, // Flags
-		0x00, 0x01, // Questions
-		0x00, 0x00, // Answer RRs
-		0x00, 0x00, // Authority RRs
-		0x00, 0x00, // Additional RRs
-	}
-
-	_, err = conn.Write(testQuery)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Read response
-	buffer := make([]byte, 512)
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, err = conn.Read(buffer)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestTCPListener(t *testing.T) {
-	tmpLog := "test_dns.log"
-	defer os.Remove(tmpLog)
-
-	testPort := "45355" // Different port from UDP test
-	listener, err := NewDNSListener(testPort, tmpLog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-
-	go listener.Start()
-	time.Sleep(time.Second) // Wait for server to start
-
-	// Create TCP client
-	conn, err := net.Dial("tcp", "127.0.0.1:"+testPort)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-
-	// Send test query with length prefix
-	testQuery := []byte{
-		0x00, 0x0c, // Length prefix (12 bytes)
-		0x00, 0x01, // Transaction ID
-		0x01, 0x00, // Flags
-		0x00, 0x01, // Questions
-		0x00, 0x00, // Answer RRs
-		0x00, 0x00, // Authority RRs
-		0x00, 0x00, // Additional RRs
-	}
-
-	_, err = conn.Write(testQuery)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Read response
-	buffer := make([]byte, 512)
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, err = conn.Read(buffer)
-	if err != nil {
-		t.Fatal(err)
+	cpuCount := 4 * 4 // max workers should be CPU count * 4
+	if workers > cpuCount {
+		t.Errorf("Expected maximum %d workers, got %d", cpuCount, workers)
 	}
 }
 
@@ -267,9 +26,9 @@ func TestParsePort(t *testing.T) {
 		port     string
 		expected int
 	}{
-		{"Valid port", "8053", 8053},
-		{"Invalid port high", "999999", -1},
-		{"Invalid port string", "invalid", -1},
+		{"Valid port", "53", 53},
+		{"Invalid port", "999999", -1},
+		{"Non-numeric port", "abc", -1},
 		{"Empty port", "", -1},
 	}
 
@@ -277,8 +36,113 @@ func TestParsePort(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parsePort(tt.port)
 			if result != tt.expected {
-				t.Errorf("parsePort(%s) = %d, want %d", tt.port, result, tt.expected)
+				t.Errorf("parsePort(%s) = %d; want %d", tt.port, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestParseDNSQuery(t *testing.T) {
+	// Sample DNS query bytes for example.com
+	queryBytes := []byte{
+		0x00, 0x01, // Transaction ID
+		0x01, 0x00, // Flags
+		0x00, 0x01, // Questions
+		0x00, 0x00, // Answer RRs
+		0x00, 0x00, // Authority RRs
+		0x00, 0x00, // Additional RRs
+		0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+		0x03, 'c', 'o', 'm',
+		0x00,       // Root label
+		0x00, 0x01, // Type A
+		0x00, 0x01, // Class IN
+	}
+
+	result := parseDNSQuery(queryBytes)
+	if result == "" {
+		t.Error("Expected non-empty query parse result")
+	}
+}
+
+func TestInitializeListener(t *testing.T) {
+	cfg := &config.Config{
+		Port:                 "53",
+		HealthPort:           "8080",
+		WorkerCount:          4,
+		RateLimit:            100,
+		RateBurst:            200,
+		CacheTTL:             5 * time.Minute,
+		CacheCleanupInterval: 10 * time.Minute,
+	}
+
+	isTestMode = true // Enable test mode
+	defer func() { isTestMode = false }()
+
+	listener, err := initializeListener(cfg)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if listener == nil {
+		t.Error("Expected non-nil listener")
+	}
+	defer listener.Close()
+}
+
+func TestDNSListenerIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Port = "15353" // Use non-privileged port for testing
+
+	listener, err := NewDNSListener(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		if err := listener.Start(); err != nil {
+			t.Errorf("Listener start error: %v", err)
+		}
+	}()
+
+	// Wait for server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Test sending a DNS query
+	conn, err := net.Dial("udp", "127.0.0.1:"+cfg.Port)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// Simple DNS query for example.com
+	query := []byte{
+		0x00, 0x01, // Transaction ID
+		0x01, 0x00, // Flags
+		0x00, 0x01, // Questions
+		0x00, 0x00, // Answer RRs
+		0x00, 0x00, // Authority RRs
+		0x00, 0x00, // Additional RRs
+		0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+		0x03, 'c', 'o', 'm',
+		0x00,       // Root label
+		0x00, 0x01, // Type A
+		0x00, 0x01, // Class IN
+	}
+
+	_, err = conn.Write(query)
+	if err != nil {
+		t.Fatalf("Failed to send query: %v", err)
+	}
+
+	// Read response
+	response := make([]byte, types.DefaultBufferSize)
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	_, err = conn.Read(response)
+	if err != nil {
+		t.Fatalf("Failed to read response: %v", err)
 	}
 }

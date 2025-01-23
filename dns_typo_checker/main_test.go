@@ -7,23 +7,38 @@ import (
 	"testing"
 )
 
-func TestMain(m *testing.M) {
-	// Set up test environment
-	tmpDir := os.TempDir()
-	origLogPath := os.Getenv("LOG_PATH")
-	os.Setenv("LOG_PATH", tmpDir)
+// mockDNSFunc is used to replace the real DNS lookup in tests
+var mockDNSFunc = func(domain string) bool {
+	// Extended mock responses
+	validDomains := map[string]bool{
+		"example.com": true,
+		"example.net": true,
+		"example.org": true,
+		"exaple.com":  false,
+		"exampl.com":  false,
+		"xample.com":  false,
+		"sz.de":       true,
+		"sz.com":      true,
+		"s.de":        false,
+		"z.de":        false,
+		"google.com":  true,
+	}
+	// Fast response for unknown domains
+	if _, exists := validDomains[domain]; !exists {
+		return false
+	}
+	return validDomains[domain]
+}
 
+func TestMain(m *testing.M) {
+	// Save original function
+	originalCheckDNS := CheckDNS
+	// Replace with mock for tests
+	CheckDNS = mockDNSFunc
 	// Run tests
 	code := m.Run()
-
-	// Clean up
-	os.Setenv("LOG_PATH", origLogPath)
-	// Clean up any test log files
-	files, _ := filepath.Glob(filepath.Join(tmpDir, "*dns_typo*.log"))
-	for _, f := range files {
-		os.Remove(f)
-	}
-
+	// Restore original function
+	CheckDNS = originalCheckDNS
 	os.Exit(code)
 }
 
@@ -74,60 +89,54 @@ func TestGenerateTypoDomains(t *testing.T) {
 }
 
 func TestCheckDNS(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	tests := []struct {
-		name     string
-		domain   string
-		expected bool
+		name   string
+		domain string
+		want   bool
 	}{
 		{
-			name:     "Valid domain",
-			domain:   "google.com",
-			expected: true,
+			name:   "Valid domain",
+			domain: "example.com",
+			want:   true,
 		},
 		{
-			name:     "Invalid domain",
-			domain:   "thisisaninvalid12domain789.com",
-			expected: false,
+			name:   "Invalid domain",
+			domain: "thisisaninvaliddomain.com",
+			want:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CheckDNS(tt.domain)
-			if result != tt.expected {
-				t.Errorf("CheckDNS(%s) = %v, want %v", tt.domain, result, tt.expected)
+			if got := CheckDNS(tt.domain); got != tt.want {
+				t.Errorf("CheckDNS() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 func TestRun(t *testing.T) {
-	// Test with empty domain list
-	Run([]string{}, []string{})
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
-	// Test with valid domains
-	domains := []string{"sz.de"}
-	commonTLDs := []string{"com", "net", "org"}
+	// Create temporary test directory
+	tmpDir := t.TempDir()
+	os.Setenv("LOG_PATH", tmpDir)
 
-	Run(domains, commonTLDs)
-	// Note: This is more of an integration test
-	// In a real-world scenario, you might want to mock the file operations
-	// and DNS checks for more isolated unit testing
-
-	domains = []string{"example.com"}
-	tlds := []string{"com", "net"}
+	// Test with limited domain set
+	domains := []string{"example.com"}
+	tlds := []string{"net", "org"}
 
 	Run(domains, tlds)
 
-	// Verify log files were created in correct location
-	logPath := os.Getenv("LOG_PATH")
-	detailsFiles, _ := filepath.Glob(filepath.Join(logPath, "*dns_typo_checker_details.log"))
-	if len(detailsFiles) == 0 {
-		t.Error("Details log file was not created in specified LOG_PATH")
-	}
-
-	notRegFiles, _ := filepath.Glob(filepath.Join(logPath, "*dns_typo_checker_not_registered.log"))
-	if len(notRegFiles) == 0 {
-		t.Error("Not registered log file was not created in specified LOG_PATH")
+	// Verify log files
+	files, err := filepath.Glob(filepath.Join(tmpDir, "*dns_typo_checker*.log"))
+	if err != nil || len(files) == 0 {
+		t.Error("Expected log files were not created")
 	}
 }

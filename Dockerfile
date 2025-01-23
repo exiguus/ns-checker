@@ -6,7 +6,7 @@ RUN go build -o ns-checker
 
 FROM alpine:latest
 
-RUN apk add --no-cache tini libcap sudo
+RUN apk add --no-cache tini libcap curl sudo
 
 WORKDIR /app
 COPY --from=builder /app/ns-checker /app/ns-checker

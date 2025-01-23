@@ -1,8 +1,13 @@
 # Environment files
 .env
 
-# Log files
+# Log files and Logs directory
 *.log
+[0-9]*-[0-9]*-[0-9]*_.
+/*/logs/
 
 # Build directory
 build/
+
+# Coverage
+coverage.out

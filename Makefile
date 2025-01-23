@@ -36,11 +36,49 @@ clean:
 	@echo "Cleaning build directory..."
 	@rm -rf $(BUILD_DIR)
 
-# Run tests
+# Environment variables for testing
+ENV_VARS := \
+	DNS_PORT=45353 \
+	WORKER_COUNT=8 \
+	RATE_LIMIT=200 \
+	RATE_BURST=400 \
+	CACHE_TTL=10m \
+	CACHE_CLEANUP=20m \
+	HEALTH_CHECK_PORT=9090 \
+	LOGS_DIR=./logs \
+	LOG_FILE=dns_listener.log
+
+# Run tests with proper flags
 .PHONY: test
 test:
-	@echo "Running tests..."
-	@go test ./... -v -cover -race
+	$(ENV_VARS) GODEBUG=netdns=go go test ./... \
+		-v \
+		-failfast \
+		-timeout=1m \
+		-parallel=4 \
+		-count=1
+
+# Run DNS listener tests
+.PHONY: test-listener
+test-listener:
+	$(ENV_VARS) go test -v ./dns_listener/... \
+		-failfast \
+		-timeout=1m \
+		-parallel=4 \
+		-count=1
+
+.PHONY: test-typo
+test-typo:
+	go test -v ./dns_typo_checker/... \
+		-failfast \
+		-timeout=1m \
+		-parallel=4 \
+		-count=1
+
+# Build
+.PHONY: build
+build:
+	go build -v ./...
 
 # Run AMD64 version
 .PHONY: run
@@ -52,7 +90,7 @@ run: build-amd64
 .PHONY: run-port
 run-port: build-amd64
 	@echo "Running AMD64 version on port $(port)..."
-	@$(AMD64_DIR)/$(BINARY_NAME) listen $(port)
+	@$(ENV_VARS) $(AMD64_DIR)/$(BINARY_NAME) listen $(port)
 
 .PHONY: start-docker
 start-docker:

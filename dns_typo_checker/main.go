@@ -43,10 +43,14 @@ func GenerateTypoDomains(domain string, commonTLDs []string) []string {
 	return typos
 }
 
-// CheckDNS checks if a domain resolves to a valid DNS record
-func CheckDNS(domain string) bool {
-	_, err := net.LookupNS(domain)
-	return err == nil
+// CheckDNS is a variable so it can be replaced in tests
+var CheckDNS = checkDNS
+
+// checkDNS is the actual implementation
+func checkDNS(domain string) bool {
+	// Original implementation here
+	ns, err := net.LookupNS(domain)
+	return err == nil && len(ns) > 0
 }
 
 // GetDomainOwner uses the "whois" command to retrieve domain ownership information
