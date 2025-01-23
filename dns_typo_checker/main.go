@@ -5,7 +5,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 // GenerateTypoDomains creates a list of typo variations for a domain
@@ -68,15 +70,33 @@ func Run(domains []string, commonTLDs []string) {
 		fmt.Println("Use default common TLDs")
 		commonTLDs = []string{"com", "net", "org", "ne", "co", "cm", "om", "de"}
 	}
-	// Open log file
-	logFile, err := os.Create("dns_typo_checker_details.log")
+
+	// Use LOG_PATH environment variable if available
+	logPath := os.Getenv("LOG_PATH")
+	if logPath == "" {
+		logPath = "./logs"
+	}
+
+	// Ensure log directory exists
+	if err := os.MkdirAll(logPath, 0755); err != nil {
+		fmt.Println("Error creating log directory:", err)
+		return
+	}
+
+	currentDate := time.Now().Format("2006-01-02")
+
+	// Open detailed log file
+	detailsLogPath := filepath.Join(logPath, currentDate+"_dns_typo_checker_details.log")
+	logFile, err := os.Create(detailsLogPath)
 	if err != nil {
 		fmt.Println("Error creating log file:", err)
 		return
 	}
 	defer logFile.Close()
+
 	// Open No DNS log file
-	noDNSLogFile, err := os.Create("dns_typo_checker_not_registered.log")
+	noDNSLogPath := filepath.Join(logPath, currentDate+"_dns_typo_checker_not_registered.log")
+	noDNSLogFile, err := os.Create(noDNSLogPath)
 	if err != nil {
 		fmt.Println("Error creating log file:", err)
 		return

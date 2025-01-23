@@ -14,8 +14,9 @@ services:
       - RATE_LIMIT=${RATE_LIMIT:-100000}
       - RATE_BURST=${RATE_BURST:-1000}
       - IN_CONTAINER=true
+      - LOG_PATH=${LOG_PATH:-./logs/}
     volumes:
-      - ./dns_listener.log:/app/dns_listener.log
+      - ${LOG_PATH:-./logs}/:/app/logs/
     cap_add:
       - NET_BIND_SERVICE
       - NET_ADMIN

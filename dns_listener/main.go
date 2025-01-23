@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -105,7 +106,22 @@ func NewDNSListener(port, logFilePath string) (*DNSListener, error) {
 		return nil, fmt.Errorf("invalid port number: %s", port)
 	}
 
-	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Use LOG_PATH environment variable if available
+	logPath := os.Getenv("LOG_PATH")
+	if logPath == "" {
+		logPath = "./"
+	}
+
+	// Add date prefix and ensure directory exists
+	currentDate := time.Now().Format("2006-01-02")
+	dateLogFilePath := filepath.Join(logPath, currentDate+"_"+filepath.Base(logFilePath))
+
+	// Ensure log directory exists
+	if err := os.MkdirAll(filepath.Dir(dateLogFilePath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	logFile, err := os.OpenFile(dateLogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -400,10 +416,11 @@ func (d *DNSListener) handleTCPConnection(conn net.Conn) {
 
 // logRequest logs DNS requests to the file
 func (d *DNSListener) logRequest(protocol, remoteAddr string, data []byte) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	humanReadable := parseDNSQuery(data)
 	hexDump := hex.Dump(data)
-	logEntry := fmt.Sprintf("[%s] Client: %s\n%s\nRaw Query (Hex):\n%s\n",
-		protocol, remoteAddr, humanReadable, hexDump)
+	logEntry := fmt.Sprintf("[%s] [%s] Client: %s\n%s\nRaw Query (Hex):\n%s\n",
+		timestamp, protocol, remoteAddr, humanReadable, hexDump)
 
 	// Print to console with colors
 	fmt.Printf("%s%s%s", colorCyan, logEntry, colorReset)

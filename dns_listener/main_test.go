@@ -3,18 +3,27 @@ package dns_listener
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestMain(m *testing.M) {
-	// Set test mode before running tests
+	// Set up test environment
 	isTestMode = true
+	origLogPath := os.Getenv("LOG_PATH")
+	tmpDir := os.TempDir()
+	os.Setenv("LOG_PATH", tmpDir)
 
 	// Run tests
 	code := m.Run()
 
-	// Exit
+	// Clean up
+	os.Setenv("LOG_PATH", origLogPath)
+	// Clean up any test log files
+	os.RemoveAll(filepath.Join(tmpDir, "*dns_listener*.log"))
+	os.RemoveAll(filepath.Join(tmpDir, "*dns_typo*.log"))
+
 	os.Exit(code)
 }
 
@@ -64,6 +73,20 @@ func TestNewDNSListener(t *testing.T) {
 				listener.Close()
 			}
 		})
+	}
+
+	// Test log file creation with LOG_PATH
+	listener, err := NewDNSListener("25353", "test_dns_listener.log")
+	if err != nil {
+		t.Fatalf("Failed to create DNS listener: %v", err)
+	}
+	defer listener.Close()
+
+	// Verify log file was created in correct location
+	logPath := os.Getenv("LOG_PATH")
+	files, err := filepath.Glob(filepath.Join(logPath, "*test_dns_listener.log"))
+	if err != nil || len(files) == 0 {
+		t.Error("Log file was not created in specified LOG_PATH")
 	}
 }
 

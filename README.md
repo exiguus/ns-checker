@@ -2,7 +2,7 @@
 
 This is a simple tool to check the availability of a domain that look similar to the given name. Searching for typos in the domain name.
 
-Also i provides a simple DNS listener that always returns the same IP address for any query and logs the query message.
+Also it provides a simple DNS listener that always returns the same IP address for any query and logs the query message. Kind of a DNS sinkhole.
 
 ## Usage
 
@@ -20,7 +20,7 @@ go run . check
 
 This will check the typo of the domain name in the `typo-tlds.txt` file.
 It will print the domain name and the typo domain name.
-It will also log the query message to a file `dns_typo_checker.log` and not registered domains to `dns_typo_checker_not_registered.log`.
+It will also log the query message to a file `[Date]_dns_typo_checker.log` and not registered domains to `[Date]_dns_typo_checker_not_registered.log` into the `logs` directory.
 
 The console output will be like this:
 
@@ -57,7 +57,7 @@ This will start a DNS server on port 5353, you can use `dig` to query the server
 
 It will always response a A record with the IP `127.0.0.1` to the query.
 It will also print the query message.
-It will also log the query message to a file `dns_listener.log`.
+It will also log the query message to a file `[Date]_dns_listener.log` in the `logs` directory.
 
 ```bash
 ns-checker/source/ns-checker via 🐹 v1.23.5 via 💎 v3.0.0 
@@ -111,6 +111,39 @@ example.com.  300 IN A 127.0.0.1
 ;; SERVER: ::1#25353(::1) (TCP)
 ;; WHEN: Wed Jan 22 20:31:38 CET 2025
 ;; MSG SIZE  rcvd: 68
+
+```
+
+`[Date]_dns_listener.log` file will be like this:
+
+```text
+[2025-01-23 00:15:02.063] [UDP] Client: [::1]:42864
+Transaction ID: 2dd3
+Flags: 0120
+Questions: 1
+Question: example.com
+Type: 001c (AAAA)
+Class: 0001 (IN)
+
+Raw Query (Hex):
+00000000  2d d3 01 20 00 01 00 00  00 00 00 01 07 65 78 61  |-.. .........exa|
+00000010  6d 70 6c 65 03 63 6f 6d  00 00 1c 00 01 00 00 29  |mple.com.......)|
+00000020  04 d0 00 00 00 00 00 0c  00 0a 00 08 b3 05 79 1a  |..............y.|
+00000030  f2 01 73 4f                                       |..sO|
+
+[2025-01-23 00:15:11.530] [UDP] Client: 127.0.0.1:57681
+Transaction ID: 6109
+Flags: 0120
+Questions: 1
+Question: example.com
+Type: 0010 (TXT)
+Class: 0001 (IN)
+
+Raw Query (Hex):
+00000000  61 09 01 20 00 01 00 00  00 00 00 01 07 65 78 61  |a.. .........exa|
+00000010  6d 70 6c 65 03 63 6f 6d  00 00 10 00 01 00 00 29  |mple.com.......)|
+00000020  04 d0 00 00 00 00 00 0c  00 0a 00 08 12 7d 69 e2  |.............}i.|
+00000030  8b f4 98 5f                                       |..._|
 
 ```
 
@@ -175,4 +208,7 @@ RATE_LIMIT=100000
 
 # Rate limit burst (default: 1000)
 RATE_BURST=1000
+
+# Log path (default: ./logs)
+LOG_PATH=./logs
 ```

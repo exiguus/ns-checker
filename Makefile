@@ -41,7 +41,7 @@ clean:
 test:
 	@echo "Running tests..."
 	@go test ./... -v -cover -race
-	@rm ./*/*.log
+
 # Run AMD64 version
 .PHONY: run
 run: build-amd64
